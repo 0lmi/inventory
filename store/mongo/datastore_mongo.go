@@ -47,6 +47,7 @@ const (
 	DbDevGroup           = "group"
 	DbDevRevision        = "revision"
 	DbDevUpdatedTs       = "updated_ts"
+	DbDevAttributesTs    = "timestamp"
 	DbDevAttributesDesc  = "description"
 	DbDevAttributesValue = "value"
 	DbDevAttributesScope = "scope"
@@ -502,7 +503,15 @@ func makeAttrUpsert(attrs model.DeviceAttributes) (bson.M, error) {
 				DbDevAttributesDesc,
 			)
 			upsert[fieldName] = attrs[i].Description
+		}
 
+		if attrs[i].Timestamp != nil {
+			fieldName = makeAttrField(
+				attrs[i].Name,
+				attrs[i].Scope,
+				DbDevAttributesTs,
+			)
+			upsert[fieldName] = attrs[i].Timestamp
 		}
 	}
 	return upsert, nil
