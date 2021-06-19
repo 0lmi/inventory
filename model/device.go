@@ -32,6 +32,7 @@ const (
 	AttrScopeInventory = "inventory"
 	AttrScopeIdentity  = "identity"
 	AttrScopeSystem    = "system"
+	AttrScopeTags      = "tags"
 
 	AttrNameID      = "id"
 	AttrNameGroup   = "group"
@@ -57,6 +58,7 @@ type DeviceAttribute struct {
 	Description *string     `json:"description,omitempty" bson:",omitempty"`
 	Value       interface{} `json:"value" bson:",omitempty"`
 	Scope       string      `json:"scope" bson:",omitempty"`
+	Timestamp   *time.Time  `json:"timestamp,omitempty" bson:",omitempty"`
 }
 
 func (da DeviceAttribute) Validate() error {
@@ -64,6 +66,7 @@ func (da DeviceAttribute) Validate() error {
 		validation.Field(&da.Name, validation.Required, validation.Length(1, 1024)),
 		validation.Field(&da.Scope, validation.Required, validation.Length(1, 1024)),
 		validation.Field(&da.Value, validation.By(validateDeviceAttrVal)),
+		validation.Field(&da.Timestamp, validation.Date(time.RFC3339)),
 	)
 }
 
@@ -285,6 +288,7 @@ func (d DeviceAttributes) MarshalBSONValue() (bsontype.Type, []byte, error) {
 			Description: d[i].Description,
 			Value:       d[i].Value,
 			Scope:       d[i].Scope,
+			Timestamp:   d[i].Timestamp,
 		}
 		attrs[i].Key = attr.Scope + "-" + replacer.Replace(d[i].Name)
 		attrs[i].Value = &attr
