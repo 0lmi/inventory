@@ -39,21 +39,24 @@ import (
 const (
 	uriDevices       = "/api/0.1.0/devices"
 	uriDevice        = "/api/0.1.0/devices/:id"
+	uriDeviceTags    = "/api/0.1.0/devices/:id/tags"
 	uriDeviceGroups  = "/api/0.1.0/devices/:id/group"
 	uriDeviceGroup   = "/api/0.1.0/devices/:id/group/:name"
 	uriAttributes    = "/api/0.1.0/attributes"
 	uriGroups        = "/api/0.1.0/groups"
 	uriGroupsDevices = "/api/0.1.0/groups/:name/devices"
 
-	uriInternalAlive         = "/api/internal/v1/inventory/alive"
-	uriInternalHealth        = "/api/internal/v1/inventory/health"
-	uriInternalTenants       = "/api/internal/v1/inventory/tenants"
-	uriInternalDevices       = "/api/internal/v1/inventory/devices"
-	urlInternalDevicesStatus = "/api/internal/v1/inventory/tenants/:tenant_id/devices/:status"
-	urlInternalAttributes    = "/api/internal/v1/inventory/tenants/:tenant_id/device/:did/attribute/scope/:scope"
-	apiUrlManagementV2       = "/api/management/v2/inventory"
-	urlFiltersAttributes     = apiUrlManagementV2 + "/filters/attributes"
-	urlFiltersSearch         = apiUrlManagementV2 + "/filters/search"
+	apiUrlInternalV1         = "/api/internal/v1/inventory"
+	uriInternalAlive         = apiUrlInternalV1 + "/alive"
+	uriInternalHealth        = apiUrlInternalV1 + "/health"
+	uriInternalTenants       = apiUrlInternalV1 + "/tenants"
+	uriInternalDevices       = apiUrlInternalV1 + "/devices"
+	urlInternalDevicesStatus = apiUrlInternalV1 + "/tenants/:tenant_id/devices/:status"
+	urlInternalAttributes    = apiUrlInternalV1 + "/tenants/:tenant_id/device/:did/attribute/scope/:scope"
+
+	apiUrlManagementV2   = "/api/management/v2/inventory"
+	urlFiltersAttributes = apiUrlManagementV2 + "/filters/attributes"
+	urlFiltersSearch     = apiUrlManagementV2 + "/filters/search"
 
 	apiUrlInternalV2         = "/api/internal/v2/inventory"
 	urlInternalFiltersSearch = apiUrlInternalV2 + "/tenants/:tenant_id/filters/search"
@@ -112,6 +115,9 @@ func (i *inventoryHandlers) GetApp() (rest.App, error) {
 		rest.Patch(urlInternalAttributes, i.PatchDeviceAttributesInternalHandler),
 		rest.Put(uriDeviceGroups, i.AddDeviceToGroupHandler),
 		rest.Patch(uriGroupsDevices, i.AppendDevicesToGroup),
+		rest.Put(uriDeviceTags, i.UpdateDeviceTagsHandler),
+		rest.Patch(uriDeviceTags, i.UpdateDeviceTagsHandler),
+
 		rest.Get(uriDeviceGroups, i.GetDeviceGroupHandler),
 		rest.Get(uriGroups, i.GetGroupsHandler),
 		rest.Get(uriGroupsDevices, i.GetDevicesByGroup),
@@ -382,32 +388,66 @@ func (i *inventoryHandlers) AddDeviceHandler(w rest.ResponseWriter, r *rest.Requ
 
 func (i *inventoryHandlers) UpdateDeviceAttributesHandler(w rest.ResponseWriter, r *rest.Request) {
 	ctx := r.Context()
-
 	l := log.FromContext(ctx)
-
 	//get device ID from JWT token
 	idata, err := identity.ExtractIdentityFromHeaders(r.Header)
 	if err != nil {
 		u.RestErrWithLogMsg(w, r, l, err, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-
+	deviceID := model.DeviceID(idata.Subject)
 	//extract attributes from body
 	attrs, err := parseAttributes(r)
 	if err != nil {
 		u.RestErrWithLog(w, r, l, err, http.StatusBadRequest)
 		return
 	}
+	i.updateDeviceAttributes(w, r, attrs, deviceID, model.AttrScopeInventory)
+}
+
+func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *rest.Request) {
+	ctx := r.Context()
+	l := log.FromContext(ctx)
+	//get device ID from uri depending from a scope
+	deviceID := model.DeviceID(r.PathParam("id"))
+	//extract attributes from body
+	attrs, err := parseAttributes(r)
+	if err != nil {
+		u.RestErrWithLog(w, r, l, err, http.StatusBadRequest)
+		return
+	}
+	// set scope and timestamp for tags attributes
+	for i := range attrs {
+		attrs[i].Scope = model.AttrScopeTags
+		if attrs[i].Timestamp == nil {
+			now := time.Now()
+			attrs[i].Timestamp = &now
+		}
+	}
+	i.updateDeviceAttributes(w, r, attrs, deviceID, model.AttrScopeTags)
+}
+
+func (i *inventoryHandlers) updateDeviceAttributes(
+	w rest.ResponseWriter,
+	r *rest.Request,
+	attrs model.DeviceAttributes,
+	deviceID model.DeviceID,
+	scope string,
+) {
+	ctx := r.Context()
+	l := log.FromContext(ctx)
+	var err error
 
 	// upsert or replace the attributes
 	if r.Method == http.MethodPatch {
-		err = i.inventory.UpsertAttributesWithUpdated(ctx, model.DeviceID(idata.Subject), attrs)
+		err = i.inventory.UpsertAttributesWithUpdated(ctx, deviceID, attrs)
 	} else if r.Method == http.MethodPut {
-		err = i.inventory.ReplaceAttributes(ctx, model.DeviceID(idata.Subject), attrs, model.AttrScopeInventory)
+		err = i.inventory.ReplaceAttributes(ctx, deviceID, attrs, scope)
 	} else {
 		u.RestErrWithLog(w, r, l, errors.New("method not alllowed"), http.StatusMethodNotAllowed)
 		return
 	}
+
 	cause := errors.Cause(err)
 	switch cause {
 	case store.ErrNoAttrName:
