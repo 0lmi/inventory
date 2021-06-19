@@ -134,6 +134,7 @@ paths:
           description: Internal error.
           schema:
             $ref: '#/definitions/Error'
+
   /devices/{id}:
     get:
       operationId: Get Device Inventory
@@ -197,6 +198,42 @@ paths:
             description: Internal server error.
             schema:
               $ref: "#/definitions/Error"
+
+  /devices/{tags}:
+    patch:
+      operationId: Assign Tags
+      tags:
+        - Management API
+      security:
+        - ManagementJWT: []
+      summary: Assign a set of tags for a device
+      description: |
+        Saves the provided tags set for the authenticated device.
+        The device ID is retrieved from the authorization header.
+
+        This method has upsert semantics:
+
+        * the values of existing attributes are overwritten
+
+        * attributes assigned for the first time are automatically created
+      parameters:
+        - name: tags
+          in: body
+          description: A list of tags descriptors.
+          required: true
+          schema:
+            title: ListOfTags
+            type: array
+            items:
+              $ref: '#/definitions/Tag'
+            example:
+              - name: "location"
+                value: "germany"
+                description: ""
+              - name: "environment"
+                value: "test"
+                description: ""
+    put:
 
   /devices/{id}/group:
     get:
@@ -268,6 +305,7 @@ paths:
           description: Internal server error.
           schema:
             $ref: "#/definitions/Error"
+
   /devices/{id}/group/{name}:
     delete:
       operationId: Clear Group
@@ -300,6 +338,7 @@ paths:
           description: Internal error.
           schema:
             $ref: '#/definitions/Error'
+
   /groups:
     get:
       operationId: List Groups
@@ -333,7 +372,6 @@ paths:
           description: Internal server error.
           schema:
             $ref: '#/definitions/Error'
-
 
   /groups/{name}/devices:
     get:
@@ -532,6 +570,40 @@ definitions:
       name: "ip_addr_eth"
       description: "Device IP address on ethernet interface"
       value: "127.0.0.1"
+  Tag:
+    description: Tag descriptor.
+    type: object
+    required:
+      - name
+      - value
+    properties:
+      name:
+        type: string
+        description: |
+            A human readable, unique tag ID, e.g. 'location', 'environment', etc.
+      description:
+        type: string
+        description: Tag description.
+      value:
+        type: string
+        description: |
+            The current value of the attribute.
+
+            Attribute type is implicit, inferred from the JSON type.
+
+            Supported types: number, string, array of numbers, array of strings.
+            Mixed type arrays are not allowed.
+      updated_ts:
+        type: date
+        description: |
+            The time of last tag update.
+
+            Date format is RFC3339.
+    example:
+      name: "ip_addr_eth"
+      description: "Device IP address on ethernet interface"
+      value: "127.0.0.1"
+      timestamp: ""
   DeviceInventory:
     type: object
     properties:
