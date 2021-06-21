@@ -402,20 +402,31 @@ func (i *inventoryHandlers) UpdateDeviceAttributesHandler(w rest.ResponseWriter,
 		u.RestErrWithLog(w, r, l, err, http.StatusBadRequest)
 		return
 	}
-	i.updateDeviceAttributes(w, r, attrs, deviceID, model.AttrScopeInventory)
+	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeInventory)
 }
 
 func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *rest.Request) {
 	ctx := r.Context()
 	l := log.FromContext(ctx)
-	//get device ID from uri depending from a scope
+
+	// get device ID from uri depending from a scope
 	deviceID := model.DeviceID(r.PathParam("id"))
-	//extract attributes from body
+	if len(deviceID) < 1 {
+		u.RestErrWithLog(w, r, l, errors.New("device id cannot be empty"), http.StatusBadRequest)
+		return
+	}
+
+	// update context with 'If-Match' header
+	ifMatchHeader := r.Header.Get("If-Match")
+	ctx = context.WithValue(ctx, "ifMatchHeader", ifMatchHeader)
+
+	// extract attributes from body
 	attrs, err := parseAttributes(r)
 	if err != nil {
 		u.RestErrWithLog(w, r, l, err, http.StatusBadRequest)
 		return
 	}
+
 	// set scope and timestamp for tags attributes
 	for i := range attrs {
 		attrs[i].Scope = model.AttrScopeTags
@@ -424,17 +435,18 @@ func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *re
 			attrs[i].Timestamp = &now
 		}
 	}
-	i.updateDeviceAttributes(w, r, attrs, deviceID, model.AttrScopeTags)
+
+	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeTags)
 }
 
 func (i *inventoryHandlers) updateDeviceAttributes(
 	w rest.ResponseWriter,
 	r *rest.Request,
+	ctx context.Context,
 	attrs model.DeviceAttributes,
 	deviceID model.DeviceID,
 	scope string,
 ) {
-	ctx := r.Context()
 	l := log.FromContext(ctx)
 	var err error
 
@@ -452,6 +464,12 @@ func (i *inventoryHandlers) updateDeviceAttributes(
 	switch cause {
 	case store.ErrNoAttrName:
 		u.RestErrWithLog(w, r, l, cause, http.StatusBadRequest)
+		return
+	case inventory.ErrETagsDontMatch:
+		u.RestErrWithInfoMsg(w, r, l, cause, http.StatusBadRequest, "ETag doesn't match")
+		return
+	case inventory.ErrMissingIfMatchHeader:
+		u.RestErrWithInfoMsg(w, r, l, cause, http.StatusBadRequest, "If-Match header is missing")
 		return
 	}
 	if err != nil {
