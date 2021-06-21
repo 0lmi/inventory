@@ -126,6 +126,7 @@ paths:
                     value: "00:01:02:03:04:05"
                     description: "MAC address"
                 updated_ts: "2016-10-04T18:24:21.432Z"
+                tags_etag: "asdf435956c699e327489213df4459d1923e1a806603def19d417d004aabc12"
         400:
           description: Missing or malformed request parameters.
           schema:
@@ -166,7 +167,13 @@ paths:
                   scope: "inventory"
                   value: "00.01:02:03:04:05"
                   description: "MAC address"
+                - name: "environment"
+                  scope: "tags"
+                  value: "test"
+                  description: "Test environment"
+                  timestamp: "2016-10-19T17:23:01.639Z"
               updated_ts: "2016-10-03T16:58:51.639Z"
+              tegs_etag: "asdf435956c699e327489213df4459d1923e1a806603def19d417d004aabc12"
         404:
           description: The device was not found.
           schema:
