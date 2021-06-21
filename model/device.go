@@ -34,10 +34,11 @@ const (
 	AttrScopeSystem    = "system"
 	AttrScopeTags      = "tags"
 
-	AttrNameID      = "id"
-	AttrNameGroup   = "group"
-	AttrNameUpdated = "updated_ts"
-	AttrNameCreated = "created_ts"
+	AttrNameID       = "id"
+	AttrNameGroup    = "group"
+	AttrNameUpdated  = "updated_ts"
+	AttrNameCreated  = "created_ts"
+	AttrNameTagsEtag = "tags_etag"
 )
 
 const (
@@ -143,6 +144,9 @@ type Device struct {
 
 	//device object revision
 	Revision uint `json:"-" bson:"revision,omitempty"`
+
+	//tags attributes ETag
+	Tags_etag *string `json:"etag,omitempty" bson:"tags_etag,omitempty"`
 }
 
 // internalDevice is only used internally to avoid recursive type-loops for
@@ -189,6 +193,7 @@ func (d Device) Validate() error {
 	return validation.ValidateStruct(&d,
 		validation.Field(&d.ID, validation.Required, validation.Length(1, 1024)),
 		validation.Field(&d.Attributes),
+		validation.Field(&d.Tags_etag, validation.Length(0, 1024)),
 	)
 }
 
