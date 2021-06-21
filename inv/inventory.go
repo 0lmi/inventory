@@ -16,12 +16,20 @@ package inv
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 
+	// "github.com/mendersoftware/go-lib-micro/log"
 	"github.com/mendersoftware/inventory/model"
 	"github.com/mendersoftware/inventory/store"
 	"github.com/mendersoftware/inventory/store/mongo"
+)
+
+var (
+	ErrETagsDontMatch       = errors.New("Received and saved ETags don't match")
+	ErrMissingIfMatchHeader = errors.New("If-Match header is required")
 )
 
 // this inventory service interface
@@ -161,7 +169,33 @@ func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, up
 			}
 		}
 	}
-	if _, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs); err != nil {
+
+	var eTag string
+	if scope == model.AttrScopeTags {
+		ifMatchHeader := ctx.Value("ifMatchHeader")
+		if device.Tags_etag != nil {
+			if ifMatchHeader == "" {
+				return ErrMissingIfMatchHeader
+			}
+			if *device.Tags_etag != ifMatchHeader {
+				return ErrETagsDontMatch
+			}
+		} else {
+			if ifMatchHeader != "" {
+				return ErrETagsDontMatch
+			}
+		}
+		// calculate eTag
+		var num int64
+		for _, arg := range upsertAttrs {
+			num += arg.Timestamp.Unix()
+		}
+		// TODO: re-do checksum calculation
+		num += time.Now().Unix()
+		eTag = fmt.Sprint(num)
+	}
+
+	if _, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs, eTag); err != nil {
 		return errors.Wrap(err, "failed to replace attributes in db")
 	}
 	return nil
