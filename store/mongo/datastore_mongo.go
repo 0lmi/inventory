@@ -554,10 +554,12 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	id model.DeviceID,
 	updateAttrs model.DeviceAttributes,
 	removeAttrs model.DeviceAttributes,
+	eTag string,
 ) (*model.UpdateResult, error) {
 	const systemScope = DbDevAttributes + "." + model.AttrScopeSystem
 	const updatedField = systemScope + "-" + model.AttrNameUpdated
 	const createdField = systemScope + "-" + model.AttrNameCreated
+	const etagField = model.AttrNameTagsEtag
 	var (
 		result *model.UpdateResult
 		err    error
@@ -575,6 +577,8 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	if err != nil {
 		return nil, err
 	}
+
+	update[etagField] = eTag
 
 	now := time.Now()
 	update[updatedField] = model.DeviceAttribute{
