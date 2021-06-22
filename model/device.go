@@ -151,7 +151,7 @@ type Device struct {
 	Revision uint `json:"-" bson:"revision,omitempty"`
 
 	//tags attributes ETag
-	Tags_etag *string `json:"etag,omitempty" bson:"tags_etag,omitempty"`
+	Tags_etag *string `json:"tags_etag,omitempty" bson:"tags_etag,omitempty"`
 }
 
 // internalDevice is only used internally to avoid recursive type-loops for
