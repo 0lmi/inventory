@@ -583,7 +583,7 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	}
 
 	tagAttributesETag := ctx.Value(model.CtxKeyETag)
-	if tagAttributesETag != nil && tagAttributesETag != "" {
+	if tagAttributesETag != nil {
 		update[etagField] = tagAttributesETag
 	}
 
