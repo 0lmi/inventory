@@ -321,6 +321,7 @@ func (db *DataStoreMongo) upsertAttributes(
 ) (*model.UpdateResult, error) {
 	const systemScope = DbDevAttributes + "." + model.AttrScopeSystem
 	const createdField = systemScope + "-" + model.AttrNameCreated
+	const etagField = model.AttrNameTagsEtag
 	var (
 		result *model.UpdateResult
 		filter interface{}
@@ -367,6 +368,10 @@ func (db *DataStoreMongo) upsertAttributes(
 	case 0:
 		return &model.UpdateResult{}, nil
 	case 1:
+		tagAttributesETag := ctx.Value(model.CtxKeyETag)
+		if tagAttributesETag != nil {
+			update[etagField] = tagAttributesETag
+		}
 		var res *mongo.UpdateResult
 		if withRevision {
 			filter = bson.M{
@@ -554,7 +559,6 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	id model.DeviceID,
 	updateAttrs model.DeviceAttributes,
 	removeAttrs model.DeviceAttributes,
-	eTag string,
 ) (*model.UpdateResult, error) {
 	const systemScope = DbDevAttributes + "." + model.AttrScopeSystem
 	const updatedField = systemScope + "-" + model.AttrNameUpdated
@@ -578,7 +582,10 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 		return nil, err
 	}
 
-	update[etagField] = eTag
+	tagAttributesETag := ctx.Value(model.CtxKeyETag)
+	if tagAttributesETag != nil && tagAttributesETag != "" {
+		update[etagField] = tagAttributesETag
+	}
 
 	now := time.Now()
 	update[updatedField] = model.DeviceAttribute{
