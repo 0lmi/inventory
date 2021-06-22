@@ -46,6 +46,11 @@ const (
 	runeDot    = '\uFF0E'
 )
 
+const (
+	CtxKeyETag          = "tagAttributesETag"
+	CtxKeyIfMatchHeader = "ifMatchHeader"
+)
+
 var validGroupNameRegex = regexp.MustCompile("^[A-Za-z0-9_-]*$")
 
 type DeviceID string
