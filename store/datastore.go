@@ -76,7 +76,7 @@ type DataStore interface {
 	// to upsert, and a list of attributes to remove. Nonexistent attributes
 	// are created, existing are overwritten; the device resource is also
 	// created if necessary
-	UpsertRemoveDeviceAttributes(ctx context.Context, id model.DeviceID, updateAttrs model.DeviceAttributes, removeAttrs model.DeviceAttributes, eTag string) (*model.UpdateResult, error)
+	UpsertRemoveDeviceAttributes(ctx context.Context, id model.DeviceID, updateAttrs model.DeviceAttributes, removeAttrs model.DeviceAttributes) (*model.UpdateResult, error)
 	// UpsertDevicesAttributesWithRevision upserts attributes for devices in the same way
 	// UpsertDevicesAttributes does.
 	// The only difference between this method and UpsertDevicesAttributes
