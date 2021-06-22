@@ -126,7 +126,7 @@ paths:
                     value: "00:01:02:03:04:05"
                     description: "MAC address"
                 updated_ts: "2016-10-04T18:24:21.432Z"
-                tags_etag: "asdf435956c699e327489213df4459d1923e1a806603def19d417d004aabc12"
+                tags_etag: "3248704689"
         400:
           description: Missing or malformed request parameters.
           schema:
@@ -250,10 +250,7 @@ paths:
                 value: "test"
       responses:
         200:
-          description: >
-            Successful response.
-          schema:
-            $ref: "#/definitions/Group"
+          description: Tags were updated successfully.
         400:
           description: Missing or malformed request params or body. See the error message for details.
         404:
@@ -308,10 +305,7 @@ paths:
                 value: "test"
       responses:
         200:
-          description: >
-            Successful response.
-          schema:
-            $ref: "#/definitions/Group"
+          description: Tags were updated successfully.
         400:
           description: Missing or malformed request params or body. See the error message for details.
         404:
@@ -711,6 +705,7 @@ definitions:
           value: "00.01:02:03:04:05"
           description: "MAC address"
       updated_ts: "2016-10-03T16:58:51.639Z"
+      tegs_etag: "3248704689"
   Group:
     type: object
     properties:
