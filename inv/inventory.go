@@ -17,11 +17,9 @@ package inv
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/pkg/errors"
 
-	// "github.com/mendersoftware/go-lib-micro/log"
 	"github.com/mendersoftware/inventory/model"
 	"github.com/mendersoftware/inventory/store"
 	"github.com/mendersoftware/inventory/store/mongo"
@@ -40,7 +38,7 @@ type InventoryApp interface {
 	GetDevice(ctx context.Context, id model.DeviceID) (*model.Device, error)
 	AddDevice(ctx context.Context, d *model.Device) error
 	UpsertAttributes(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes) error
-	UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes) error
+	UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes, scope string) error
 	UpsertDevicesStatuses(ctx context.Context, devices []model.DeviceUpdate, attrs model.DeviceAttributes) (*model.UpdateResult, error)
 	ReplaceAttributes(ctx context.Context, id model.DeviceID, upsertAttrs model.DeviceAttributes, scope string) error
 	GetFiltersAttributes(ctx context.Context) ([]model.FilterAttribute, error)
@@ -139,7 +137,41 @@ func (i *inventory) UpsertAttributes(ctx context.Context, id model.DeviceID, att
 	return nil
 }
 
-func (i *inventory) UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes) error {
+func (i *inventory) UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes, scope string) error {
+	if scope == model.AttrScopeTags {
+		device, err := i.db.GetDevice(ctx, id)
+		if err != nil && err != store.ErrDevNotFound {
+			return errors.Wrap(err, "failed to get the device")
+		}
+		// check provided ETag
+		err = checkTagAttributesETag(ctx, device.Tags_etag)
+		if err != nil {
+			return err
+		}
+		// make all attributes list
+		totalAttrs := model.DeviceAttributes{}
+		attrsUpdated := make([]bool, len(attrs))
+		for _, da := range device.Attributes {
+			if da.Scope == model.AttrScopeTags {
+				totalAttrs = append(totalAttrs, da)
+				for i, a := range attrs {
+					if da.Name == a.Name {
+						totalAttrs[len(totalAttrs)-1] = a
+						attrsUpdated[i] = true
+						break
+					}
+				}
+			}
+		}
+		for i, val := range attrsUpdated {
+			if !val {
+				totalAttrs = append(totalAttrs, attrs[i])
+			}
+		}
+		// calculate new ETag
+		ctx = calcTagAttributesETag(ctx, totalAttrs)
+	}
+
 	if _, err := i.db.UpsertDevicesAttributesWithUpdated(
 		ctx, []model.DeviceID{id}, attrs,
 	); err != nil {
@@ -161,6 +193,7 @@ func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, up
 				for _, upsertAttr := range upsertAttrs {
 					if upsertAttr.Name == attr.Name {
 						update = true
+						break
 					}
 				}
 				if !update {
@@ -170,37 +203,50 @@ func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, up
 		}
 	}
 
-	eTag := ""
 	if scope == model.AttrScopeTags {
-		ifMatchHeader := ctx.Value("ifMatchHeader")
-		if device.Tags_etag != nil && *device.Tags_etag != "" {
-			if ifMatchHeader == "" {
-				return ErrMissingIfMatchHeader
-			}
-			if *device.Tags_etag != ifMatchHeader {
-				return ErrETagsDontMatch
-			}
-		} else {
-			if ifMatchHeader != "" {
-				return ErrETagsDontMatch
-			}
+		err := checkTagAttributesETag(ctx, device.Tags_etag)
+		if err != nil {
+			return err
 		}
-		// calculate eTag
-		if len(upsertAttrs) > 0 {
-			var num int64
-			for _, arg := range upsertAttrs {
-				num += arg.Timestamp.Unix()
-			}
-			// TODO: re-do checksum calculation
-			num += time.Now().Unix()
-			eTag = fmt.Sprint(num)
-		}
+		ctx = calcTagAttributesETag(ctx, upsertAttrs)
 	}
 
-	if _, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs, eTag); err != nil {
+	if _, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs); err != nil {
 		return errors.Wrap(err, "failed to replace attributes in db")
 	}
 	return nil
+}
+
+func checkTagAttributesETag(ctx context.Context, eTag *string) error {
+	ifMatchHeader := ctx.Value(model.CtxKeyIfMatchHeader)
+	if eTag != nil && *eTag != "" {
+		if ifMatchHeader == "" {
+			return ErrMissingIfMatchHeader
+		}
+		if *eTag != ifMatchHeader {
+			return ErrETagsDontMatch
+		}
+	} else {
+		if ifMatchHeader != "" {
+			return ErrETagsDontMatch
+		}
+	}
+	return nil
+}
+
+func calcTagAttributesETag(ctx context.Context, arrts model.DeviceAttributes) context.Context {
+	eTag := ""
+	if len(arrts) > 0 {
+		var num int64
+		for _, arg := range arrts {
+			num += arg.Timestamp.Unix()
+		}
+		// TODO: re-do checksum calculation
+		// num += time.Now().Unix()
+		eTag = fmt.Sprint(num)
+		ctx = context.WithValue(ctx, model.CtxKeyETag, eTag)
+	}
+	return ctx
 }
 
 func (i *inventory) GetFiltersAttributes(ctx context.Context) ([]model.FilterAttribute, error) {
