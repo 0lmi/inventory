@@ -224,6 +224,10 @@ paths:
 
         * attributes assigned for the first time are automatically created
       parameters:
+        - in: header
+          name: If-Match
+          description: Contains ETag of modified device object.
+          type: string
         - name: id
           in: path
           description: Device identifier.
@@ -231,7 +235,7 @@ paths:
           type: string
         - name: tags
           in: body
-          description: A list of tags descriptors.
+          description: A list of tag descriptors.
           required: true
           schema:
             title: ListOfTags
@@ -278,6 +282,10 @@ paths:
 
         * attributes assigned for the first time are automatically created
       parameters:
+        - in: header
+          name: If-Match
+          description: Contains ETag of modified device object.
+          type: string
         - name: id
           in: path
           description: Device identifier.
@@ -671,8 +679,9 @@ definitions:
         description: The current value of the tag.
       timestamp:
         type: string
+        format: date-time
         description: |
-            The date-time of last tag update in RFC3339 format.
+            The date and time of last tag update in RFC3339 format.
     example:
       name: "environment"
       description: "Test environment"
