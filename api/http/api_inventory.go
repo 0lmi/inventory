@@ -418,7 +418,7 @@ func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *re
 
 	// update context with 'If-Match' header
 	ifMatchHeader := r.Header.Get("If-Match")
-	ctx = context.WithValue(ctx, "ifMatchHeader", ifMatchHeader)
+	ctx = context.WithValue(ctx, model.CtxKeyIfMatchHeader, ifMatchHeader)
 
 	// extract attributes from body
 	attrs, err := parseAttributes(r)
@@ -452,7 +452,7 @@ func (i *inventoryHandlers) updateDeviceAttributes(
 
 	// upsert or replace the attributes
 	if r.Method == http.MethodPatch {
-		err = i.inventory.UpsertAttributesWithUpdated(ctx, deviceID, attrs)
+		err = i.inventory.UpsertAttributesWithUpdated(ctx, deviceID, attrs, scope)
 	} else if r.Method == http.MethodPut {
 		err = i.inventory.ReplaceAttributes(ctx, deviceID, attrs, scope)
 	} else {
