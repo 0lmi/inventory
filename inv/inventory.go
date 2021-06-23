@@ -16,6 +16,7 @@ package inv
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -217,13 +218,13 @@ func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, up
 	return nil
 }
 
-func checkTagAttributesETag(ctx context.Context, eTag *string) error {
+func checkTagAttributesETag(ctx context.Context, etag *string) error {
 	ifMatchHeader := ctx.Value(model.CtxKeyIfMatchHeader)
-	if eTag != nil && *eTag != "" {
+	if etag != nil && *etag != "" {
 		if ifMatchHeader == "" {
 			return ErrMissingIfMatchHeader
 		}
-		if *eTag != ifMatchHeader {
+		if *etag != ifMatchHeader {
 			return ErrETagsDontMatch
 		}
 	} else {
@@ -234,18 +235,23 @@ func checkTagAttributesETag(ctx context.Context, eTag *string) error {
 	return nil
 }
 
-func calcTagAttributesETag(ctx context.Context, arrts model.DeviceAttributes) context.Context {
-	eTag := ""
-	if len(arrts) > 0 {
-		var num int64
-		for _, arg := range arrts {
-			num += arg.Timestamp.Unix()
+// calculates ETag for attributes with 'tags' scope
+// ETag is calculated as MD5 checksum of a sum of all timestamps in Unix format
+func calcTagAttributesETag(ctx context.Context, attrs model.DeviceAttributes) context.Context {
+	etag := ""
+	if len(attrs) > 0 {
+		var sum int64
+		for _, attr := range attrs {
+			if attr.Scope == model.AttrScopeTags {
+				sum += attr.Timestamp.Unix()
+			}
 		}
-		// TODO: re-do checksum calculation
-		// num += time.Now().Unix()
-		eTag = fmt.Sprint(num)
-		ctx = context.WithValue(ctx, model.CtxKeyETag, eTag)
+		if sum > 0 {
+			data := []byte(fmt.Sprint(sum))
+			etag = fmt.Sprintf("%x", md5.Sum(data))
+		}
 	}
+	ctx = context.WithValue(ctx, model.CtxKeyETag, etag)
 	return ctx
 }
 
