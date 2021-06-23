@@ -126,7 +126,7 @@ paths:
                     value: "00:01:02:03:04:05"
                     description: "MAC address"
                 updated_ts: "2016-10-04T18:24:21.432Z"
-                tags_etag: "3248704689"
+                tags_etag: "7ac7eeb4297cf820728c04127496c441"
         400:
           description: Missing or malformed request parameters.
           schema:
@@ -173,7 +173,7 @@ paths:
                   description: "Test environment"
                   timestamp: "2016-10-19T17:23:01.639Z"
               updated_ts: "2016-10-03T16:58:51.639Z"
-              tegs_etag: "3248704689"
+              tags_etag: "7ac7eeb4297cf820728c04127496c441"
         404:
           description: The device was not found.
           schema:
@@ -705,7 +705,7 @@ definitions:
           value: "00.01:02:03:04:05"
           description: "MAC address"
       updated_ts: "2016-10-03T16:58:51.639Z"
-      tegs_etag: "3248704689"
+      tags_etag: "7ac7eeb4297cf820728c04127496c441"
   Group:
     type: object
     properties:
