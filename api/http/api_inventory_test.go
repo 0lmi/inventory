@@ -681,6 +681,9 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 		inReq  *http.Request
 		inHdrs map[string]string
 
+		scope string
+		etag  *string
+
 		inventoryErr error
 
 		resp             utils.JSONResponseParams
@@ -695,6 +698,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusUnauthorized,
 				OutputBodyObject: RestError("unauthorized"),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"invalid auth": {
@@ -709,6 +713,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusUnauthorized,
 				OutputBodyObject: RestError("unauthorized"),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"empty body": {
@@ -723,6 +728,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusBadRequest,
 				OutputBodyObject: RestError("failed to decode request body: JSON payload is empty"),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"garbled body": {
@@ -737,6 +743,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusBadRequest,
 				OutputBodyObject: RestError("failed to decode request body: json: cannot unmarshal string into Go value of type []model.DeviceAttribute"),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attribute name missing": {
@@ -762,6 +769,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusBadRequest,
 				OutputBodyObject: RestError("name: cannot be blank."),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attribute value missing": {
@@ -782,6 +790,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusBadRequest,
 				OutputBodyObject: RestError("value: supported types are string, float64, and arrays thereof."),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (all fields)": {
@@ -812,6 +821,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				{Name: "name1", Value: "value1", Description: strPtr("descr1"), Scope: model.AttrScopeInventory},
 				{Name: "name2", Value: float64(2), Description: strPtr("descr2"), Scope: model.AttrScopeInventory},
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (all fields), with scope": {
@@ -844,6 +854,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				{Name: "name1", Value: "value1", Description: strPtr("descr1"), Scope: model.AttrScopeInventory},
 				{Name: "name2", Value: float64(2), Description: strPtr("descr2"), Scope: model.AttrScopeInventory},
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (all fields, arrays)": {
@@ -870,6 +881,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusOK,
 				OutputBodyObject: nil,
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (values only)": {
@@ -894,6 +906,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusOK,
 				OutputBodyObject: nil,
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok, but values are empty": {
@@ -918,6 +931,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusOK,
 				OutputBodyObject: nil,
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (all fields), inventory err": {
@@ -944,6 +958,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusInternalServerError,
 				OutputBodyObject: RestError("internal error"),
 			},
+			scope: model.AttrScopeInventory,
 		},
 
 		"body formatted ok, attributes ok (values only), PUT": {
@@ -968,6 +983,7 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 				OutputStatus:     http.StatusOK,
 				OutputBodyObject: nil,
 			},
+			scope: model.AttrScopeInventory,
 		},
 	}
 
@@ -991,7 +1007,8 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 						return true
 					},
 				),
-				model.AttrScopeInventory,
+				tc.scope,
+				tc.etag,
 			).Return(tc.inventoryErr)
 		} else {
 			inv.On("ReplaceAttributes",
@@ -1007,7 +1024,8 @@ func TestApiInventoryUpsertAttributes(t *testing.T) {
 						return true
 					},
 				),
-				model.AttrScopeInventory,
+				tc.scope,
+				tc.etag,
 			).Return(tc.inventoryErr)
 		}
 
