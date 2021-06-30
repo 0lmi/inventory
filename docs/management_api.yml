@@ -126,7 +126,7 @@ paths:
                     value: "00:01:02:03:04:05"
                     description: "MAC address"
                 updated_ts: "2016-10-04T18:24:21.432Z"
-                tags_etag: "7ac7eeb4297cf820728c04127496c441"
+                tags_etag: "42851e74-804f-422b-8d33-5eea23839cc4"
         400:
           description: Missing or malformed request parameters.
           schema:
@@ -173,7 +173,7 @@ paths:
                   description: "Test environment"
                   timestamp: "2016-10-19T17:23:01.639Z"
               updated_ts: "2016-10-03T16:58:51.639Z"
-              tags_etag: "7ac7eeb4297cf820728c04127496c441"
+              tags_etag: "42851e74-804f-422b-8d33-5eea23839cc4"
         404:
           description: The device was not found.
           schema:
@@ -224,8 +224,8 @@ paths:
 
         * attributes assigned for the first time are automatically created
       parameters:
-        - in: header
-          name: If-Match
+        - name: If-Match
+          in: header
           description: Contains ETag of modified device object.
           type: string
         - name: id
@@ -251,6 +251,8 @@ paths:
       responses:
         200:
           description: Tags were updated successfully.
+        412:
+          description: ETag doesn't match.
         400:
           description: Missing or malformed request params or body. See the error message for details.
         404:
@@ -279,8 +281,8 @@ paths:
 
         * attributes assigned for the first time are automatically created
       parameters:
-        - in: header
-          name: If-Match
+        - name: If-Match
+          in: header
           description: Contains ETag of modified device object.
           type: string
         - name: id
@@ -306,6 +308,8 @@ paths:
       responses:
         200:
           description: Tags were updated successfully.
+        412:
+          description: ETag doesn't match.
         400:
           description: Missing or malformed request params or body. See the error message for details.
         404:
@@ -705,7 +709,7 @@ definitions:
           value: "00.01:02:03:04:05"
           description: "MAC address"
       updated_ts: "2016-10-03T16:58:51.639Z"
-      tags_etag: "7ac7eeb4297cf820728c04127496c441"
+      tags_etag: "42851e74-804f-422b-8d33-5eea23839cc4"
   Group:
     type: object
     properties:
