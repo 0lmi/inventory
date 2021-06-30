@@ -402,7 +402,7 @@ func (i *inventoryHandlers) UpdateDeviceAttributesHandler(w rest.ResponseWriter,
 		u.RestErrWithLog(w, r, l, err, http.StatusBadRequest)
 		return
 	}
-	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeInventory)
+	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeInventory, nil)
 }
 
 func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *rest.Request) {
@@ -416,9 +416,7 @@ func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *re
 		return
 	}
 
-	// update context with 'If-Match' header
 	ifMatchHeader := r.Header.Get("If-Match")
-	ctx = context.WithValue(ctx, model.CtxKeyIfMatchHeader, ifMatchHeader)
 
 	// extract attributes from body
 	attrs, err := parseAttributes(r)
@@ -428,15 +426,15 @@ func (i *inventoryHandlers) UpdateDeviceTagsHandler(w rest.ResponseWriter, r *re
 	}
 
 	// set scope and timestamp for tags attributes
+	now := time.Now()
 	for i := range attrs {
 		attrs[i].Scope = model.AttrScopeTags
 		if attrs[i].Timestamp == nil {
-			now := time.Now()
 			attrs[i].Timestamp = &now
 		}
 	}
 
-	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeTags)
+	i.updateDeviceAttributes(w, r, ctx, attrs, deviceID, model.AttrScopeTags, &ifMatchHeader)
 }
 
 func (i *inventoryHandlers) updateDeviceAttributes(
@@ -446,15 +444,16 @@ func (i *inventoryHandlers) updateDeviceAttributes(
 	attrs model.DeviceAttributes,
 	deviceID model.DeviceID,
 	scope string,
+	etag *string,
 ) {
 	l := log.FromContext(ctx)
 	var err error
 
 	// upsert or replace the attributes
 	if r.Method == http.MethodPatch {
-		err = i.inventory.UpsertAttributesWithUpdated(ctx, deviceID, attrs, scope)
+		err = i.inventory.UpsertAttributesWithUpdated(ctx, deviceID, attrs, scope, etag)
 	} else if r.Method == http.MethodPut {
-		err = i.inventory.ReplaceAttributes(ctx, deviceID, attrs, scope)
+		err = i.inventory.ReplaceAttributes(ctx, deviceID, attrs, scope, etag)
 	} else {
 		u.RestErrWithLog(w, r, l, errors.New("method not alllowed"), http.StatusMethodNotAllowed)
 		return
@@ -465,11 +464,8 @@ func (i *inventoryHandlers) updateDeviceAttributes(
 	case store.ErrNoAttrName:
 		u.RestErrWithLog(w, r, l, cause, http.StatusBadRequest)
 		return
-	case inventory.ErrETagsDontMatch:
-		u.RestErrWithInfoMsg(w, r, l, cause, http.StatusBadRequest, "ETag doesn't match")
-		return
-	case inventory.ErrMissingIfMatchHeader:
-		u.RestErrWithInfoMsg(w, r, l, cause, http.StatusBadRequest, "If-Match header is missing")
+	case inventory.ErrETagDoesntMatch:
+		u.RestErrWithInfoMsg(w, r, l, cause, http.StatusPreconditionFailed, cause.Error())
 		return
 	}
 	if err != nil {
