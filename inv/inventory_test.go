@@ -309,14 +309,23 @@ func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
 	testCases := map[string]struct {
 		datastoreError error
 		outError       error
+
+		scope string
+		etag  *string
 	}{
 		"datastore success": {
 			datastoreError: nil,
 			outError:       nil,
+
+			scope: model.AttrScopeInventory,
+			etag:  nil,
 		},
 		"datastore error": {
 			datastoreError: errors.New("db connection failed"),
 			outError:       errors.New("failed to upsert attributes in db: db connection failed"),
+
+			scope: model.AttrScopeInventory,
+			etag:  nil,
 		},
 	}
 
@@ -330,11 +339,14 @@ func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
 			db.On("UpsertDevicesAttributesWithUpdated",
 				ctx,
 				mock.AnythingOfType("[]model.DeviceID"),
-				mock.AnythingOfType("model.DeviceAttributes")).
-				Return(nil, tc.datastoreError)
+				mock.AnythingOfType("model.DeviceAttributes"),
+				tc.scope,
+				tc.etag,
+			).Return(nil, tc.datastoreError)
+
 			i := invForTest(db)
 
-			err := i.UpsertAttributesWithUpdated(ctx, "devid", model.DeviceAttributes{}, model.AttrScopeInventory)
+			err := i.UpsertAttributesWithUpdated(ctx, "devid", model.DeviceAttributes{}, tc.scope, tc.etag)
 
 			if tc.outError != nil {
 				if assert.Error(t, err) {
@@ -359,6 +371,9 @@ func TestReplaceAttributes(t *testing.T) {
 		upsertAttrs model.DeviceAttributes
 		removeAttrs model.DeviceAttributes
 		outError    error
+
+		scope string
+		etag  *string
 	}{
 		"ok, device not found": {
 			deviceID:     "1",
@@ -381,6 +396,8 @@ func TestReplaceAttributes(t *testing.T) {
 
 			datastoreError: nil,
 			outError:       nil,
+
+			scope: model.AttrScopeInventory,
 		},
 		"ok, device found": {
 			deviceID: "1",
@@ -405,6 +422,8 @@ func TestReplaceAttributes(t *testing.T) {
 
 			datastoreError: nil,
 			outError:       nil,
+
+			scope: model.AttrScopeInventory,
 		},
 		"ok, device found, replace attributes": {
 			deviceID: "1",
@@ -446,6 +465,8 @@ func TestReplaceAttributes(t *testing.T) {
 
 			datastoreError: nil,
 			outError:       nil,
+
+			scope: model.AttrScopeInventory,
 		},
 		"ko, get device error": {
 			deviceID:     "1",
@@ -454,6 +475,8 @@ func TestReplaceAttributes(t *testing.T) {
 
 			datastoreError: nil,
 			outError:       errors.New("failed to get the device: get device error"),
+
+			scope: model.AttrScopeInventory,
 		},
 		"ko, datastore error": {
 			deviceID:     "1",
@@ -476,6 +499,8 @@ func TestReplaceAttributes(t *testing.T) {
 
 			datastoreError: errors.New("get device error"),
 			outError:       errors.New("failed to replace attributes in db: get device error"),
+
+			scope: model.AttrScopeInventory,
 		},
 	}
 
@@ -497,11 +522,13 @@ func TestReplaceAttributes(t *testing.T) {
 					tc.deviceID,
 					tc.upsertAttrs,
 					tc.removeAttrs,
+					tc.scope,
+					tc.etag,
 				).Return(nil, tc.datastoreError)
 			}
 
 			i := invForTest(db)
-			err := i.ReplaceAttributes(ctx, tc.deviceID, tc.upsertAttrs, model.AttrScopeInventory)
+			err := i.ReplaceAttributes(ctx, tc.deviceID, tc.upsertAttrs, tc.scope, tc.etag)
 
 			if tc.outError != nil {
 				if assert.Error(t, err) {
