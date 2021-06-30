@@ -362,6 +362,9 @@ func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
 func TestReplaceAttributes(t *testing.T) {
 	t.Parallel()
 
+	etag1 := "f7238315-062d-4440-875a-676006f84c34"
+	etag2 := "e5f05b31-398a-4df9-a0fd-52c38ef77123"
+
 	testCases := map[string]struct {
 		deviceID       model.DeviceID
 		getDevice      *model.Device
@@ -372,8 +375,9 @@ func TestReplaceAttributes(t *testing.T) {
 		removeAttrs model.DeviceAttributes
 		outError    error
 
-		scope string
-		etag  *string
+		scope    string
+		etag     *string
+		dbResult *model.UpdateResult
 	}{
 		"ok, device not found": {
 			deviceID:     "1",
@@ -502,6 +506,155 @@ func TestReplaceAttributes(t *testing.T) {
 
 			scope: model.AttrScopeInventory,
 		},
+		"ok, add tags, no etag": {
+			deviceID: "1",
+			getDevice: &model.Device{
+				Attributes: model.DeviceAttributes{},
+			},
+			upsertAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "name",
+					Value: "foo",
+					Scope: model.AttrScopeTags,
+				},
+				model.DeviceAttribute{
+					Name:  "region",
+					Value: "bar",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			removeAttrs: model.DeviceAttributes{},
+			scope:       model.AttrScopeTags,
+		},
+		"ok, replace tags, with etag": {
+			deviceID: "1",
+			getDevice: &model.Device{
+				Attributes: model.DeviceAttributes{
+					model.DeviceAttribute{
+						Name:  "name",
+						Value: "foo",
+						Scope: model.AttrScopeTags,
+					},
+				},
+				Tags_etag: &etag1,
+			},
+			upsertAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "region",
+					Value: "bar",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			removeAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "name",
+					Value: "foo",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			scope: model.AttrScopeTags,
+			etag:  &etag1,
+		},
+		"ok, delete tags, no etag": {
+			deviceID: "1",
+			getDevice: &model.Device{
+				Attributes: model.DeviceAttributes{
+					model.DeviceAttribute{
+						Name:  "name",
+						Value: "foo",
+						Scope: model.AttrScopeTags,
+					},
+					model.DeviceAttribute{
+						Name:  "region",
+						Value: "bar",
+						Scope: model.AttrScopeTags,
+					},
+				},
+			},
+			upsertAttrs: model.DeviceAttributes{},
+			removeAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "name",
+					Value: "foo",
+					Scope: model.AttrScopeTags,
+				},
+				model.DeviceAttribute{
+					Name:  "region",
+					Value: "bar",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			scope: model.AttrScopeTags,
+		},
+		"ok, delete tags, with etag": {
+			deviceID: "1",
+			getDevice: &model.Device{
+				Attributes: model.DeviceAttributes{
+					model.DeviceAttribute{
+						Name:  "name",
+						Value: "foo",
+						Scope: model.AttrScopeTags,
+					},
+					model.DeviceAttribute{
+						Name:  "region",
+						Value: "bar",
+						Scope: model.AttrScopeTags,
+					},
+				},
+				Tags_etag: &etag1,
+			},
+			upsertAttrs: model.DeviceAttributes{},
+			removeAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "name",
+					Value: "foo",
+					Scope: model.AttrScopeTags,
+				},
+				model.DeviceAttribute{
+					Name:  "region",
+					Value: "bar",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			scope: model.AttrScopeTags,
+			etag:  &etag1,
+		},
+		"fail, modify tags, etag doesn't match": {
+			deviceID: "1",
+			getDevice: &model.Device{
+				Attributes: model.DeviceAttributes{
+					model.DeviceAttribute{
+						Name:  "name",
+						Value: "foo",
+						Scope: model.AttrScopeTags,
+					},
+					model.DeviceAttribute{
+						Name:  "region",
+						Value: "bar",
+						Scope: model.AttrScopeTags,
+					},
+				},
+				Tags_etag: &etag1,
+			},
+			upsertAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "name",
+					Value: "new-foo",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			removeAttrs: model.DeviceAttributes{
+				model.DeviceAttribute{
+					Name:  "region",
+					Value: "bar",
+					Scope: model.AttrScopeTags,
+				},
+			},
+			scope:    model.AttrScopeTags,
+			etag:     &etag2,
+			dbResult: &model.UpdateResult{MatchedCount: 0},
+			outError: errors.New("ETag does not match"),
+		},
 	}
 
 	for name, tc := range testCases {
@@ -524,7 +677,7 @@ func TestReplaceAttributes(t *testing.T) {
 					tc.removeAttrs,
 					tc.scope,
 					tc.etag,
-				).Return(nil, tc.datastoreError)
+				).Return(tc.dbResult, tc.datastoreError)
 			}
 
 			i := invForTest(db)
