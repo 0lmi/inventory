@@ -16,8 +16,6 @@ package inv
 
 import (
 	"context"
-	"crypto/md5"
-	"fmt"
 
 	"github.com/pkg/errors"
 
@@ -27,8 +25,7 @@ import (
 )
 
 var (
-	ErrETagsDontMatch       = errors.New("Received and saved ETags don't match")
-	ErrMissingIfMatchHeader = errors.New("If-Match header is required")
+	ErrETagDoesntMatch = errors.New("ETag does not match")
 )
 
 // this inventory service interface
@@ -39,9 +36,9 @@ type InventoryApp interface {
 	GetDevice(ctx context.Context, id model.DeviceID) (*model.Device, error)
 	AddDevice(ctx context.Context, d *model.Device) error
 	UpsertAttributes(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes) error
-	UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes, scope string) error
+	UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes, scope string, etag *string) error
 	UpsertDevicesStatuses(ctx context.Context, devices []model.DeviceUpdate, attrs model.DeviceAttributes) (*model.UpdateResult, error)
-	ReplaceAttributes(ctx context.Context, id model.DeviceID, upsertAttrs model.DeviceAttributes, scope string) error
+	ReplaceAttributes(ctx context.Context, id model.DeviceID, upsertAttrs model.DeviceAttributes, scope string, etag *string) error
 	GetFiltersAttributes(ctx context.Context) ([]model.FilterAttribute, error)
 	UnsetDeviceGroup(ctx context.Context, id model.DeviceID, groupName model.GroupName) error
 	UnsetDevicesGroup(
@@ -138,50 +135,28 @@ func (i *inventory) UpsertAttributes(ctx context.Context, id model.DeviceID, att
 	return nil
 }
 
-func (i *inventory) UpsertAttributesWithUpdated(ctx context.Context, id model.DeviceID, attrs model.DeviceAttributes, scope string) error {
-	if scope == model.AttrScopeTags {
-		device, err := i.db.GetDevice(ctx, id)
-		if err != nil && err != store.ErrDevNotFound {
-			return errors.Wrap(err, "failed to get the device")
-		}
-		// check provided ETag
-		err = checkTagAttributesETag(ctx, device.Tags_etag)
-		if err != nil {
-			return err
-		}
-		// make all attributes list
-		totalAttrs := model.DeviceAttributes{}
-		attrsUpdated := make([]bool, len(attrs))
-		for _, da := range device.Attributes {
-			if da.Scope == model.AttrScopeTags {
-				totalAttrs = append(totalAttrs, da)
-				for i, a := range attrs {
-					if da.Name == a.Name {
-						totalAttrs[len(totalAttrs)-1] = a
-						attrsUpdated[i] = true
-						break
-					}
-				}
-			}
-		}
-		for i, val := range attrsUpdated {
-			if !val {
-				totalAttrs = append(totalAttrs, attrs[i])
-			}
-		}
-		// calculate new ETag
-		ctx = calcTagAttributesETag(ctx, totalAttrs)
-	}
-
-	if _, err := i.db.UpsertDevicesAttributesWithUpdated(
-		ctx, []model.DeviceID{id}, attrs,
-	); err != nil {
+func (i *inventory) UpsertAttributesWithUpdated(
+	ctx context.Context,
+	id model.DeviceID,
+	attrs model.DeviceAttributes,
+	scope string,
+	etag *string,
+) error {
+	res, err := i.db.UpsertDevicesAttributesWithUpdated(
+		ctx, []model.DeviceID{id}, attrs, scope, etag,
+	)
+	if err != nil {
 		return errors.Wrap(err, "failed to upsert attributes in db")
+	}
+	if etag != nil && *etag != "" {
+		if res != nil && res.MatchedCount == 0 {
+			return ErrETagDoesntMatch
+		}
 	}
 	return nil
 }
 
-func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, upsertAttrs model.DeviceAttributes, scope string) error {
+func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, upsertAttrs model.DeviceAttributes, scope string, etag *string) error {
 	device, err := i.db.GetDevice(ctx, id)
 	if err != nil && err != store.ErrDevNotFound {
 		return errors.Wrap(err, "failed to get the device")
@@ -204,55 +179,16 @@ func (i *inventory) ReplaceAttributes(ctx context.Context, id model.DeviceID, up
 		}
 	}
 
-	if scope == model.AttrScopeTags {
-		err := checkTagAttributesETag(ctx, device.Tags_etag)
-		if err != nil {
-			return err
-		}
-		ctx = calcTagAttributesETag(ctx, upsertAttrs)
-	}
-
-	if _, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs); err != nil {
+	res, err := i.db.UpsertRemoveDeviceAttributes(ctx, id, upsertAttrs, removeAttrs, scope, etag)
+	if err != nil {
 		return errors.Wrap(err, "failed to replace attributes in db")
 	}
-	return nil
-}
-
-func checkTagAttributesETag(ctx context.Context, etag *string) error {
-	ifMatchHeader := ctx.Value(model.CtxKeyIfMatchHeader)
 	if etag != nil && *etag != "" {
-		if ifMatchHeader == "" {
-			return ErrMissingIfMatchHeader
-		}
-		if *etag != ifMatchHeader {
-			return ErrETagsDontMatch
-		}
-	} else {
-		if ifMatchHeader != "" {
-			return ErrETagsDontMatch
+		if res != nil && res.MatchedCount == 0 {
+			return ErrETagDoesntMatch
 		}
 	}
 	return nil
-}
-
-// calculates ETag for attributes with 'tags' scope
-// ETag is calculated as MD5 checksum of a sum of all timestamps in Unix format
-func calcTagAttributesETag(ctx context.Context, attrs model.DeviceAttributes) context.Context {
-	etag := ""
-	if len(attrs) > 0 {
-		var sum int64
-		for _, attr := range attrs {
-			if attr.Scope == model.AttrScopeTags {
-				sum += attr.Timestamp.Unix()
-			}
-		}
-		if sum > 0 {
-			data := []byte(fmt.Sprint(sum))
-			etag = fmt.Sprintf("%x", md5.Sum(data))
-		}
-	}
-	ctx = context.WithValue(ctx, model.CtxKeyETag, etag)
-	return ctx
 }
 
 func (i *inventory) GetFiltersAttributes(ctx context.Context) ([]model.FilterAttribute, error) {
