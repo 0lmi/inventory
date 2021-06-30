@@ -28,6 +28,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	mopts "go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/google/uuid"
 	"github.com/mendersoftware/go-lib-micro/log"
 	mstore "github.com/mendersoftware/go-lib-micro/store"
 	"github.com/pkg/errors"
@@ -272,7 +273,7 @@ func (db *DataStoreMongo) AddDevice(ctx context.Context, dev *model.Device) erro
 		})
 	}
 	_, err := db.UpsertDevicesAttributesWithUpdated(
-		ctx, []model.DeviceID{dev.ID}, dev.Attributes,
+		ctx, []model.DeviceID{dev.ID}, dev.Attributes, "", nil,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to store device")
@@ -285,15 +286,17 @@ func (db *DataStoreMongo) UpsertDevicesAttributesWithRevision(
 	devices []model.DeviceUpdate,
 	attrs model.DeviceAttributes,
 ) (*model.UpdateResult, error) {
-	return db.upsertAttributes(ctx, devices, attrs, false, true)
+	return db.upsertAttributes(ctx, devices, attrs, false, true, "", nil)
 }
 
 func (db *DataStoreMongo) UpsertDevicesAttributesWithUpdated(
 	ctx context.Context,
 	ids []model.DeviceID,
 	attrs model.DeviceAttributes,
+	scope string,
+	etag *string,
 ) (*model.UpdateResult, error) {
-	return db.upsertAttributes(ctx, makeDevsWithIds(ids), attrs, true, false)
+	return db.upsertAttributes(ctx, makeDevsWithIds(ids), attrs, true, false, scope, etag)
 }
 
 func (db *DataStoreMongo) UpsertDevicesAttributes(
@@ -301,7 +304,7 @@ func (db *DataStoreMongo) UpsertDevicesAttributes(
 	ids []model.DeviceID,
 	attrs model.DeviceAttributes,
 ) (*model.UpdateResult, error) {
-	return db.upsertAttributes(ctx, makeDevsWithIds(ids), attrs, false, false)
+	return db.upsertAttributes(ctx, makeDevsWithIds(ids), attrs, false, false, "", nil)
 }
 
 func makeDevsWithIds(ids []model.DeviceID) []model.DeviceUpdate {
@@ -318,6 +321,8 @@ func (db *DataStoreMongo) upsertAttributes(
 	attrs model.DeviceAttributes,
 	withUpdated bool,
 	withRevision bool,
+	scope string,
+	etag *string,
 ) (*model.UpdateResult, error) {
 	const systemScope = DbDevAttributes + "." + model.AttrScopeSystem
 	const createdField = systemScope + "-" + model.AttrNameCreated
@@ -368,28 +373,59 @@ func (db *DataStoreMongo) upsertAttributes(
 	case 0:
 		return &model.UpdateResult{}, nil
 	case 1:
-		tagAttributesETag := ctx.Value(model.CtxKeyETag)
-		if tagAttributesETag != nil {
-			update[etagField] = tagAttributesETag
-		}
 		var res *mongo.UpdateResult
 		if withRevision {
-			filter = bson.M{
-				"_id":         devices[0].Id,
-				DbDevRevision: bson.M{"$lt": devices[0].Revision},
+			if etag != nil && *etag != "" {
+				filter = bson.M{
+					"_id":         devices[0].Id,
+					DbDevRevision: bson.M{"$lt": devices[0].Revision},
+					etagField:     bson.M{"$exists": true, "$eq": *etag},
+				}
+				count, err := c.CountDocuments(ctx, filter)
+				if err != nil {
+					return nil, err
+				}
+				if count < 1 {
+					return &model.UpdateResult{MatchedCount: 0}, nil
+				}
+			} else {
+				filter = bson.M{
+					"_id":         devices[0].Id,
+					DbDevRevision: bson.M{"$lt": devices[0].Revision},
+				}
+			}
+			if scope == model.AttrScopeTags {
+				update[etagField] = fmt.Sprintf("%s", uuid.New())
 			}
 			update[DbDevRevision] = devices[0].Revision
-			update = bson.M{
-				"$set":         update,
-				"$setOnInsert": oninsert,
-			}
 		} else {
-			filter = map[string]interface{}{"_id": devices[0].Id}
-			update = bson.M{
-				"$set":         update,
-				"$setOnInsert": oninsert,
+			if etag != nil && *etag != "" {
+				filter = bson.M{
+					"_id":     devices[0].Id,
+					etagField: bson.M{"$exists": true, "$eq": *etag},
+				}
+				// check if we are going to update existing document with the
+				// filter, otherwise with SetUpsert(true) the query ends up
+				// with 'duplicate key' error
+				count, err := c.CountDocuments(ctx, filter)
+				if err != nil {
+					return nil, err
+				}
+				if count < 1 {
+					return &model.UpdateResult{MatchedCount: 0}, nil
+				}
+			} else {
+				filter = map[string]interface{}{"_id": devices[0].Id}
+			}
+			if scope == model.AttrScopeTags {
+				update[etagField] = fmt.Sprintf("%s", uuid.New())
 			}
 		}
+		update = bson.M{
+			"$set":         update,
+			"$setOnInsert": oninsert,
+		}
+
 		res, err = c.UpdateOne(ctx, filter, update, mopts.Update().SetUpsert(true))
 		if err != nil {
 			if strings.Contains(err.Error(), "duplicate key error") {
@@ -559,6 +595,8 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	id model.DeviceID,
 	updateAttrs model.DeviceAttributes,
 	removeAttrs model.DeviceAttributes,
+	scope string,
+	etag *string,
 ) (*model.UpdateResult, error) {
 	const systemScope = DbDevAttributes + "." + model.AttrScopeSystem
 	const updatedField = systemScope + "-" + model.AttrNameUpdated
@@ -573,6 +611,26 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 		Database(mstore.DbFromContext(ctx, DbName)).
 		Collection(DbDevicesColl)
 
+	var filter interface{}
+	if etag != nil && *etag != "" {
+		filter = bson.M{
+			"_id":     id,
+			etagField: bson.M{"$exists": true, "$eq": *etag},
+		}
+		// check if we are going to update existing document with the
+		// filter, otherwise with SetUpsert(true) the query ends up
+		// with 'duplicate key' error
+		count, err := c.CountDocuments(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+		if count < 1 {
+			return &model.UpdateResult{MatchedCount: 0}, nil
+		}
+	} else {
+		filter = map[string]interface{}{"_id": id}
+	}
+
 	update, err := makeAttrUpsert(updateAttrs)
 	if err != nil {
 		return nil, err
@@ -582,9 +640,8 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 		return nil, err
 	}
 
-	tagAttributesETag := ctx.Value(model.CtxKeyETag)
-	if tagAttributesETag != nil {
-		update[etagField] = tagAttributesETag
+	if scope == model.AttrScopeTags {
+		update[etagField] = fmt.Sprintf("%s", uuid.New())
 	}
 
 	now := time.Now()
@@ -608,7 +665,6 @@ func (db *DataStoreMongo) UpsertRemoveDeviceAttributes(
 	}
 
 	var res *mongo.UpdateResult
-	filter := map[string]interface{}{"_id": id}
 	res, err = c.UpdateOne(ctx, filter, update, mopts.Update().SetUpsert(true))
 	if err == nil {
 		result = &model.UpdateResult{
