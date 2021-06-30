@@ -1492,7 +1492,7 @@ func TestMongoUpsertDevicesAttributes(t *testing.T) {
 
 				var err error
 				if withUpdated {
-					_, err = d.UpsertDevicesAttributesWithUpdated(ctx, tc.inDevIDs, tc.inAttrs)
+					_, err = d.UpsertDevicesAttributesWithUpdated(ctx, tc.inDevIDs, tc.inAttrs, "", nil)
 				} else {
 					_, err = d.UpsertDevicesAttributes(ctx, tc.inDevIDs, tc.inAttrs)
 				}
@@ -2266,7 +2266,7 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 				assert.NoError(t, err, "failed to setup input data")
 			}
 
-			_, err := d.UpsertRemoveDeviceAttributes(ctx, tc.inDevID, tc.inUpsertAttrs, tc.inRemoveAttrs)
+			_, err := d.UpsertRemoveDeviceAttributes(ctx, tc.inDevID, tc.inUpsertAttrs, tc.inRemoveAttrs, "", nil)
 			if tc.err != nil {
 				assert.EqualError(t, err, tc.err.Error())
 			} else {
