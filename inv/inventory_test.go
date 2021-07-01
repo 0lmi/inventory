@@ -303,29 +303,37 @@ func TestInventoryUpsertAttributes(t *testing.T) {
 	}
 }
 
-func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
+func TestInventoryUpsertAttributesWithUpdated(t *testing.T) {
 	t.Parallel()
+
+	etag := "f7238315-062d-4440-875a-676006f84c34"
+	dsResult := model.UpdateResult{MatchedCount: 0}
 
 	testCases := map[string]struct {
 		datastoreError error
 		outError       error
 
+		datastoreResult *model.UpdateResult
+
 		scope string
 		etag  *string
 	}{
 		"datastore success": {
-			datastoreError: nil,
-			outError:       nil,
-
-			scope: model.AttrScopeInventory,
-			etag:  nil,
+			datastoreResult: nil,
+			datastoreError:  nil,
+			outError:        nil,
+			scope:           model.AttrScopeInventory,
 		},
 		"datastore error": {
 			datastoreError: errors.New("db connection failed"),
 			outError:       errors.New("failed to upsert attributes in db: db connection failed"),
-
-			scope: model.AttrScopeInventory,
-			etag:  nil,
+			scope:          model.AttrScopeInventory,
+		},
+		"incorrect etag": {
+			datastoreResult: &dsResult,
+			datastoreError:  errors.New("ETag does not match"),
+			scope:           model.AttrScopeTags,
+			etag:            &etag,
 		},
 	}
 
@@ -342,7 +350,7 @@ func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
 				mock.AnythingOfType("model.DeviceAttributes"),
 				tc.scope,
 				tc.etag,
-			).Return(nil, tc.datastoreError)
+			).Return(tc.datastoreResult, tc.datastoreError)
 
 			i := invForTest(db)
 
@@ -353,8 +361,13 @@ func TestInventoryUpsertAttributeWithUpdated(t *testing.T) {
 					assert.EqualError(t, err, tc.outError.Error())
 				}
 			} else {
-				assert.NoError(t, err)
+				if tc.etag != nil && *tc.etag != "" {
+					assert.EqualError(t, err, "failed to upsert attributes in db: ETag does not match")
+				} else {
+					assert.NoError(t, err)
+				}
 			}
+
 		})
 	}
 }
