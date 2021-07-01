@@ -1556,6 +1556,7 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 	createdTs := time.Now()
 
 	etag := "f7238315-062d-4440-875a-676006f84c34"
+	emptyEtag := ""
 
 	testCases := map[string]struct {
 		devs []model.Device
@@ -1572,7 +1573,8 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 		scope string
 		etag  *string
 
-		upsertMatchedCount int64
+		upsertMatchedCount  int64
+		isCorrectEtagWanted bool
 	}{
 		"dev exists, attributes exist, update both attrs (descr + val)": {
 			devs: []model.Device{
@@ -2263,6 +2265,115 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 			}},
 			err: errors.New("attribute name not present"),
 		},
+		"dev exists, attributes exist, update tags, no etag": {
+			devs: []model.Device{
+				{
+					ID: model.DeviceID("0003"),
+					Attributes: model.DeviceAttributes{
+						{
+							Name:        "environment",
+							Value:       "test",
+							Description: strPtr("test_env"),
+							Scope:       model.AttrScopeTags,
+						},
+						{
+							Name:        "region",
+							Value:       "EU",
+							Description: strPtr("descr"),
+							Scope:       model.AttrScopeTags,
+						},
+					},
+					CreatedTs: createdTs,
+				},
+			},
+			inDevID: model.DeviceID("0003"),
+			inUpsertAttrs: model.DeviceAttributes{
+				{
+					Name:        "environment",
+					Value:       "prod",
+					Description: strPtr("prod_env"),
+					Scope:       model.AttrScopeTags,
+				},
+			},
+			outDevs: []model.Device{
+				{
+					ID: model.DeviceID("0003"),
+					Attributes: model.DeviceAttributes{
+						{
+							Name:        "environment",
+							Value:       "prod",
+							Description: strPtr("prod_env"),
+							Scope:       model.AttrScopeTags,
+						},
+						{
+							Name:        "region",
+							Value:       "EU",
+							Description: strPtr("descr"),
+							Scope:       model.AttrScopeTags,
+						},
+					},
+					CreatedTs: createdTs,
+				},
+			},
+			scope:              model.AttrScopeTags,
+			upsertMatchedCount: 1,
+			etag:               &emptyEtag,
+		},
+		"dev exists, attributes exist, update tags, wrong etag": {
+			devs: []model.Device{
+				{
+					ID: model.DeviceID("0003"),
+					Attributes: model.DeviceAttributes{
+						{
+							Name:        "environment",
+							Value:       "test",
+							Description: strPtr("test_env"),
+							Scope:       model.AttrScopeTags,
+						},
+						{
+							Name:        "region",
+							Value:       "EU",
+							Description: strPtr("descr"),
+							Scope:       model.AttrScopeTags,
+						},
+					},
+					CreatedTs: createdTs,
+				},
+			},
+			inDevID: model.DeviceID("0003"),
+			inUpsertAttrs: model.DeviceAttributes{
+				{
+					Name:        "environment",
+					Value:       "prod",
+					Description: strPtr("prod_env"),
+					Scope:       model.AttrScopeTags,
+				},
+			},
+			outDevs: []model.Device{
+				{
+					ID: model.DeviceID("0003"),
+					Attributes: model.DeviceAttributes{
+						{
+							Name:        "environment",
+							Value:       "prod",
+							Description: strPtr("prod_env"),
+							Scope:       model.AttrScopeTags,
+						},
+						{
+							Name:        "region",
+							Value:       "EU",
+							Description: strPtr("descr"),
+							Scope:       model.AttrScopeTags,
+						},
+					},
+					CreatedTs: createdTs,
+				},
+			},
+
+			scope:              model.AttrScopeTags,
+			upsertMatchedCount: 0,
+			etag:               &etag,
+		},
 		"dev exists, attributes exist, update tags, correct etag": {
 			devs: []model.Device{
 				{
@@ -2313,63 +2424,10 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 					CreatedTs: createdTs,
 				},
 			},
-			scope:              model.AttrScopeTags,
-			upsertMatchedCount: 1,
-		},
-		"dev exists, attributes exist, wrong etag": {
-			devs: []model.Device{
-				{
-					ID: model.DeviceID("0003"),
-					Attributes: model.DeviceAttributes{
-						{
-							Name:        "environment",
-							Value:       "test",
-							Description: strPtr("test_env"),
-							Scope:       model.AttrScopeTags,
-						},
-						{
-							Name:        "region",
-							Value:       "EU",
-							Description: strPtr("descr"),
-							Scope:       model.AttrScopeTags,
-						},
-					},
-					CreatedTs: createdTs,
-				},
-			},
-			inDevID: model.DeviceID("0003"),
-			inUpsertAttrs: model.DeviceAttributes{
-				{
-					Name:        "environment",
-					Value:       "prod",
-					Description: strPtr("prod_env"),
-					Scope:       model.AttrScopeTags,
-				},
-			},
-			outDevs: []model.Device{
-				{
-					ID: model.DeviceID("0003"),
-					Attributes: model.DeviceAttributes{
-						{
-							Name:        "environment",
-							Value:       "prod",
-							Description: strPtr("prod_env"),
-							Scope:       model.AttrScopeTags,
-						},
-						{
-							Name:        "region",
-							Value:       "EU",
-							Description: strPtr("descr"),
-							Scope:       model.AttrScopeTags,
-						},
-					},
-					CreatedTs: createdTs,
-				},
-			},
 
-			scope:              model.AttrScopeTags,
-			upsertMatchedCount: 1,
-			// etag:  &etag,
+			scope:               model.AttrScopeTags,
+			upsertMatchedCount:  1,
+			isCorrectEtagWanted: true,
 		},
 	}
 
@@ -2391,36 +2449,6 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 				})
 			}
 
-			var tags_etag *string
-			if tc.scope == model.AttrScopeTags {
-				if tc.etag != nil {
-					tags_etag = &etag
-					tags_etag = tc.etag
-				} else {
-					var d []model.Device
-					cur, err := s.Database(DbName).
-						Collection(DbDevicesColl).
-						Find(
-							nil,
-							bson.M{},
-							mopts.Find().SetSort(bson.M{"_id": 1}),
-						)
-					if err == nil {
-						err = cur.All(nil, &d)
-					}
-					if !assert.NoError(t, err) {
-						t.FailNow()
-					}
-					if d != nil {
-						assert.Equal(t, len(tc.devs), len(d))
-						tags_etag = d[len(d)-1].Tags_etag
-					}
-				}
-				if tags_etag != nil {
-					t.Logf(">>> tags_etag: %s", *tags_etag)
-				}
-			}
-
 			//test
 			d := NewDataStoreMongoWithSession(s)
 			for _, dev := range tc.devs {
@@ -2428,21 +2456,16 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 				assert.NoError(t, err, "failed to setup input data")
 			}
 
-			res, err := d.UpsertRemoveDeviceAttributes(ctx, tc.inDevID, tc.inUpsertAttrs, tc.inRemoveAttrs, tc.scope, tags_etag)
+			_, err := d.UpsertRemoveDeviceAttributes(ctx, tc.inDevID, tc.inUpsertAttrs, tc.inRemoveAttrs, tc.scope, nil)
 			if tc.err != nil {
 				assert.EqualError(t, err, tc.err.Error())
 			} else {
 				assert.NoError(t, err, "UpsertRemoveAttributes failed")
 			}
-			// if tc.etag != nil {
-			// assert.Equal(t, res.MatchedCount, tc.upsertMatchedCount)
-			// }
 
 			if tc.scope == model.AttrScopeTags {
-				assert.Equal(t, tc.upsertMatchedCount, res.MatchedCount)
-
-				var tags_etag *string
-				if tc.scope == model.AttrScopeTags {
+				tags_etag := tc.etag
+				if tc.isCorrectEtagWanted {
 					var d []model.Device
 					cur, err := s.Database(DbName).
 						Collection(DbDevicesColl).
@@ -2457,14 +2480,15 @@ func TestMongoUpsertRemoveDeviceAttributes(t *testing.T) {
 					if !assert.NoError(t, err) {
 						t.FailNow()
 					}
-					// if d != nil {
 					assert.Equal(t, len(tc.devs), len(d))
 					tags_etag = d[len(d)-1].Tags_etag
-					// }
 				}
-				if tags_etag != nil {
-					t.Logf(">>> tags_etag: %s", *tags_etag)
+				t.Log(*tags_etag)
+				res, err := d.UpsertRemoveDeviceAttributes(ctx, tc.inDevID, tc.inUpsertAttrs, tc.inRemoveAttrs, tc.scope, tags_etag)
+				if tc.err != nil {
+					assert.EqualError(t, err, tc.err.Error())
 				}
+				assert.Equal(t, tc.upsertMatchedCount, res.MatchedCount)
 			}
 
 			//get the device back
